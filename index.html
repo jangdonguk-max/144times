@@ -132,6 +132,8 @@ nav{display:flex;align-items:center;padding:8px 12px;background:var(--surf);bord
 
 /* GRID VIEWS */
 .grid-nav{display:flex;align-items:center;gap:8px;padding:8px 12px;border-bottom:2px solid var(--bdr);background:var(--surf);flex-shrink:0}
+.clear-sel-btn{font-size:10px;padding:4px 9px;border:2px solid #c4a8d8;border-radius:6px;cursor:pointer;background:#f5f0ff;color:#8060b0;font-family:'Nunito',sans-serif;font-weight:700;transition:all .15s;white-space:nowrap}
+.clear-sel-btn:hover{background:#c4a8d8;color:#fff}
 .grid-scroll{flex:1;overflow:auto;padding:8px}
 .g-grid{display:grid}
 .g-tlbl{font-size:7px;font-family:'DM Mono',monospace;color:var(--mut);display:flex;align-items:center;padding-right:2px;white-space:nowrap;overflow:hidden}
@@ -345,6 +347,7 @@ nav{display:flex;align-items:center;padding:8px 12px;background:var(--surf);bord
       <span class="plbl" id="wlbl">—</span>
       <button class="arw" onclick="chWeek(1)">›</button>
       <button class="today-btn" style="margin-left:auto" onclick="goTodayW()">이번 주</button>
+      <button class="clear-sel-btn" id="clr-w" style="display:none" onclick="clearGridSel()">✕ 선택 해제</button>
     </div>
     <div class="grid-scroll"><div class="g-grid" id="wgrid"></div></div>
     <div class="g-leg" id="leg-w"></div>
@@ -357,6 +360,7 @@ nav{display:flex;align-items:center;padding:8px 12px;background:var(--surf);bord
       <span class="plbl" id="mlbl">—</span>
       <button class="arw" onclick="chMonth(1)">›</button>
       <button class="today-btn" style="margin-left:auto" onclick="goTodayM()">이번 달</button>
+      <button class="clear-sel-btn" id="clr-m" style="display:none" onclick="clearGridSel()">✕ 선택 해제</button>
     </div>
     <div class="grid-scroll"><div class="g-grid" id="mgrid"></div></div>
     <div class="g-leg" id="leg-m"></div>
@@ -369,6 +373,7 @@ nav{display:flex;align-items:center;padding:8px 12px;background:var(--surf);bord
       <span class="plbl" id="ylbl">—</span>
       <button class="arw" onclick="chYear(1)">›</button>
       <button class="today-btn" style="margin-left:auto" onclick="goTodayY()">올해</button>
+      <button class="clear-sel-btn" id="clr-y" style="display:none" onclick="clearGridSel()">✕ 선택 해제</button>
     </div>
     <div class="grid-scroll"><div class="g-grid" id="ygrid"></div></div>
     <div class="g-leg" id="leg-y"></div>
@@ -818,53 +823,50 @@ function applyRuleDate(rule,dateStr){
 }
 
 // ══════════════════════════════════════════════════
-// TYPE MANAGER — GROUPS + TOUCH DRAG
+// TYPE MANAGER — GROUPS + DRAG (fixed)
 // ══════════════════════════════════════════════════
-// CATS structure: [{id,label,color} | {group:true,id,label,open:bool,items:[{id,label,color}]}]
 function openTypes(){draftCats=deepClone(CATS);renderTList();document.getElementById('ov-types').classList.add('open');}
 
-let dragSrc=null; // {groupIdx or null, itemIdx}
+var dragSrc=null;
 function renderTList(){
-  const list=document.getElementById('tlist');list.innerHTML='';
-  draftCats.forEach((entry,gi)=>{
+  var list=document.getElementById('tlist');list.innerHTML='';
+  draftCats.forEach(function(entry,gi){
     if(entry.group){
-      // GROUP
-      const grp=document.createElement('div');grp.className='tgroup';
-      const hd=document.createElement('div');hd.className='tgroup-hd';
-      hd.innerHTML=`<input class="tgroup-name" value="${entry.label}" data-gi="${gi}"/>
-        <button class="tgroup-del" data-gi="${gi}" title="그룹 삭제">✕</button>
-        <span class="tgroup-toggle${entry.open===false?' closed':''}">▾</span>`;
-      hd.querySelector('.tgroup-name').addEventListener('input',e=>{draftCats[+e.target.dataset.gi].label=e.target.value;});
-      hd.querySelector('.tgroup-del').addEventListener('click',e=>{
+      var grp=document.createElement('div');grp.className='tgroup';grp.dataset.gi=gi;
+      var hd=document.createElement('div');hd.className='tgroup-hd';
+      var nameEl=document.createElement('input');nameEl.className='tgroup-name';nameEl.value=entry.label;
+      nameEl.addEventListener('input',function(){draftCats[gi].label=nameEl.value;});
+      var delBtn=document.createElement('button');delBtn.className='tgroup-del';delBtn.textContent='✕';
+      delBtn.addEventListener('click',function(e){
         e.stopPropagation();
-        // move items out before deleting
-        const items=draftCats[gi].items||[];
-        draftCats.splice(gi,1,...items);
+        var items=draftCats[gi].items||[];
+        draftCats.splice.apply(draftCats,[gi,1].concat(items));
         renderTList();
       });
-      hd.addEventListener('click',e=>{
+      var toggleEl=document.createElement('span');
+      toggleEl.className='tgroup-toggle'+(entry.open===false?' closed':'');
+      toggleEl.textContent='▾';
+      hd.appendChild(nameEl);hd.appendChild(delBtn);hd.appendChild(toggleEl);
+      hd.addEventListener('click',function(e){
         if(e.target.tagName==='INPUT'||e.target.tagName==='BUTTON')return;
-        draftCats[gi].open=draftCats[gi].open===false?true:false;
+        draftCats[gi].open=(draftCats[gi].open===false);
         renderTList();
+      });
+      // group as drop target
+      grp.addEventListener('dragover',function(e){e.preventDefault();grp.style.outline='2px dashed var(--acc)';});
+      grp.addEventListener('dragleave',function(e){if(!grp.contains(e.relatedTarget))grp.style.outline='';});
+      grp.addEventListener('drop',function(e){
+        e.preventDefault();e.stopPropagation();grp.style.outline='';
+        if(!dragSrc)return;
+        var item=removeFromDraft(dragSrc);
+        if(!draftCats[gi].items)draftCats[gi].items=[];
+        draftCats[gi].items.push(item);
+        dragSrc=null;renderTList();
       });
       grp.appendChild(hd);
       if(entry.open!==false){
-        const body=document.createElement('div');body.className='tgroup-body';
-        (entry.items||[]).forEach((cat,ci)=>{
-          body.appendChild(makeTRow(cat,gi,ci));
-        });
-        // drop zone for empty group
-        body.addEventListener('dragover',e=>{e.preventDefault();});
-        body.addEventListener('drop',e=>{
-          e.preventDefault();
-          if(!dragSrc)return;
-          // remove from source
-          var item=removeFromDraft(dragSrc);
-          // add to this group
-          if(!draftCats[gi].items)draftCats[gi].items=[];
-          draftCats[gi].items.push(item);
-          dragSrc=null;renderTList();
-        });
+        var body=document.createElement('div');body.className='tgroup-body';
+        (entry.items||[]).forEach(function(cat,ci){body.appendChild(makeTRow(cat,gi,ci));});
         grp.appendChild(body);
       }
       list.appendChild(grp);
@@ -874,116 +876,93 @@ function renderTList(){
   });
 }
 
-function makeTRow(cat,groupIdx,itemIdx){
-  const row=document.createElement('div');row.className='trow';row.draggable=true;
-  row.innerHTML=`<div class="tdragh">⠿</div>
-    <div class="tdot" style="background:${cat.color}"></div>
-    <input class="tni" value="${cat.label}"/>
-    <button class="tdel">✕</button>`;
-  row.querySelector('.tdot').addEventListener('click',e=>{
-    // find real index in draftCats
-    var idx=findDraftIdx(groupIdx,itemIdx);
-    openCpopG(e,groupIdx,itemIdx);
-  });
-  row.querySelector('.tni').addEventListener('input',e=>{
-    setDraftLabel(groupIdx,itemIdx,e.target.value);
-  });
-  row.querySelector('.tdel').addEventListener('click',()=>{
-    removeFromDraft({groupIdx,itemIdx});renderTList();
-  });
-  // drag
-  row.addEventListener('dragstart',()=>{dragSrc={groupIdx,itemIdx};row.classList.add('dragging');});
-  row.addEventListener('dragend',()=>{row.classList.remove('dragging');clearDragOver();});
-  row.addEventListener('dragover',e=>{e.preventDefault();row.classList.add('drag-over');});
-  row.addEventListener('dragleave',()=>row.classList.remove('drag-over'));
-  row.addEventListener('drop',e=>{
-    e.preventDefault();row.classList.remove('drag-over');
+function makeTRow(cat,gIdx,iIdx){
+  var row=document.createElement('div');row.className='trow';row.draggable=true;
+  var handle=document.createElement('div');handle.className='tdragh';handle.textContent='⠿';
+  var dot=document.createElement('div');dot.className='tdot';dot.style.background=cat.color;
+  var nameIn=document.createElement('input');nameIn.className='tni';nameIn.value=cat.label;
+  var delBtn=document.createElement('button');delBtn.className='tdel';delBtn.textContent='✕';
+  row.appendChild(handle);row.appendChild(dot);row.appendChild(nameIn);row.appendChild(delBtn);
+  dot.addEventListener('click',function(e){openCpopG(e,gIdx,iIdx);});
+  nameIn.addEventListener('input',function(){setDraftLabel(gIdx,iIdx,nameIn.value);});
+  delBtn.addEventListener('click',function(e){e.stopPropagation();removeFromDraft({groupIdx:gIdx,itemIdx:iIdx});renderTList();});
+  // desktop drag
+  row.addEventListener('dragstart',function(){dragSrc={groupIdx:gIdx,itemIdx:iIdx};row.classList.add('dragging');});
+  row.addEventListener('dragend',function(){row.classList.remove('dragging');clearDragOver();});
+  row.addEventListener('dragover',function(e){e.preventDefault();e.stopPropagation();row.classList.add('drag-over');});
+  row.addEventListener('dragleave',function(){row.classList.remove('drag-over');});
+  row.addEventListener('drop',function(e){
+    e.preventDefault();e.stopPropagation();row.classList.remove('drag-over');
     if(!dragSrc)return;
     var item=removeFromDraft(dragSrc);
-    insertIntoDraft({groupIdx,itemIdx},item);
+    insertIntoDraft({groupIdx:gIdx,itemIdx:iIdx},item);
     dragSrc=null;renderTList();
   });
-  // touch drag (iOS)
-  var touchStartY=0;
-  row.addEventListener('touchstart',e=>{touchStartY=e.touches[0].clientY;dragSrc={groupIdx,itemIdx};},{passive:true});
-  row.addEventListener('touchend',e=>{
-    var dy=e.changedTouches[0].clientY-touchStartY;
-    if(Math.abs(dy)<10){dragSrc=null;return;}
-    // simple up/down reorder
-    var step=dy>0?1:-1;
+  // touch reorder
+  var ty0=0;var touchTimer=null;
+  row.addEventListener('touchstart',function(e){
+    ty0=e.touches[0].clientY;
+    touchTimer=setTimeout(function(){dragSrc={groupIdx:gIdx,itemIdx:iIdx};row.style.opacity='.5';},400);
+  },{passive:true});
+  row.addEventListener('touchend',function(e){
+    clearTimeout(touchTimer);row.style.opacity='';
+    if(!dragSrc){return;}
+    var dy=e.changedTouches[0].clientY-ty0;
     var item=removeFromDraft(dragSrc);
-    // re-insert at adjusted position (best effort flat)
-    var flat=getFlatList();
-    var flatIdx=findFlatIdx(groupIdx,itemIdx)+step;
-    flatIdx=Math.max(0,Math.min(flatIdx,flat.length));
-    insertAtFlat(flatIdx,item);
+    var pos=findFlatPosOf(gIdx,iIdx)+(dy>0?1:-1);
+    pos=Math.max(0,pos);
+    insertAtFlat(pos,item);
     dragSrc=null;renderTList();
   },{passive:true});
+  row.addEventListener('touchcancel',function(){clearTimeout(touchTimer);row.style.opacity='';dragSrc=null;},{passive:true});
   return row;
 }
 
-function getFlatList(){
-  var result=[];
-  draftCats.forEach((entry,gi)=>{
-    if(entry.group){(entry.items||[]).forEach((_,ci)=>result.push({groupIdx:gi,itemIdx:ci}));}
-    else result.push({groupIdx:null,itemIdx:gi});
-  });
-  return result;
-}
-function findFlatIdx(gIdx,iIdx){
-  var fl=getFlatList();
-  for(var k=0;k<fl.length;k++){if(fl[k].groupIdx===gIdx&&fl[k].itemIdx===iIdx)return k;}
-  return 0;
-}
-function insertAtFlat(flatIdx,item){
-  // rebuild: just push to top-level for now
-  draftCats.splice(flatIdx,0,item);
-}
-
-function removeFromDraft(src){
-  if(src.groupIdx!==null&&src.groupIdx!==undefined){
-    return draftCats[src.groupIdx].items.splice(src.itemIdx,1)[0];
-  } else {
-    return draftCats.splice(src.itemIdx,1)[0];
+function findFlatPosOf(gIdx,iIdx){
+  var c=0;
+  for(var k=0;k<draftCats.length;k++){
+    var e=draftCats[k];
+    if(e.group){for(var j=0;j<(e.items||[]).length;j++){if(k===gIdx&&j===iIdx)return c;c++;}}
+    else{if(gIdx===null&&k===iIdx)return c;c++;}
   }
+  return c;
+}
+function insertAtFlat(pos,item){
+  var c=0;
+  for(var k=0;k<draftCats.length;k++){
+    var e=draftCats[k];
+    if(e.group){
+      for(var j=0;j<=(e.items||[]).length;j++){if(c===pos){e.items.splice(j,0,item);return;}if(j<e.items.length)c++;}
+    } else {if(c===pos){draftCats.splice(k,0,item);return;}c++;}
+  }
+  draftCats.push(item);
+}
+function removeFromDraft(src){
+  if(src.groupIdx!==null&&src.groupIdx!==undefined)return draftCats[src.groupIdx].items.splice(src.itemIdx,1)[0];
+  return draftCats.splice(src.itemIdx,1)[0];
 }
 function insertIntoDraft(target,item){
-  if(target.groupIdx!==null&&target.groupIdx!==undefined){
-    draftCats[target.groupIdx].items.splice(target.itemIdx,0,item);
-  } else {
-    draftCats.splice(target.itemIdx,0,item);
-  }
+  if(target.groupIdx!==null&&target.groupIdx!==undefined)draftCats[target.groupIdx].items.splice(target.itemIdx,0,item);
+  else draftCats.splice(target.itemIdx,0,item);
 }
-function setDraftLabel(groupIdx,itemIdx,val){
-  if(groupIdx!==null&&groupIdx!==undefined){draftCats[groupIdx].items[itemIdx].label=val;}
-  else{draftCats[itemIdx].label=val;}
+function setDraftLabel(gIdx,iIdx,val){
+  if(gIdx!==null&&gIdx!==undefined)draftCats[gIdx].items[iIdx].label=val;
+  else draftCats[iIdx].label=val;
 }
-function clearDragOver(){document.querySelectorAll('.trow').forEach(r=>r.classList.remove('drag-over'));}
+function clearDragOver(){document.querySelectorAll('.trow').forEach(function(r){r.classList.remove('drag-over');});}
+function addType(){draftCats.push({id:'t'+Date.now(),label:'새 유형',color:BASE_COLORS[Math.floor(Math.random()*BASE_COLORS.length)]});renderTList();}
+function addGroup(){draftCats.push({group:true,id:'g'+Date.now(),label:'새 그룹',open:true,items:[]});renderTList();}
+function saveTypes(){CATS=draftCats;saveCats(CATS);cov('ov-types');renderDay();buildCOpts();}
 
-function addType(){
-  var color=BASE_COLORS[Math.floor(Math.random()*BASE_COLORS.length)];
-  draftCats.push({id:'t'+Date.now(),label:'새 유형',color:color});
-  renderTList();
-}
-function addGroup(){
-  draftCats.push({group:true,id:'g'+Date.now(),label:'새 그룹',open:true,items:[]});
-  renderTList();
-}
-function saveTypes(){
-  // flatten groups into CATS (keep group structure in storage, but CATS = flat for gc())
-  CATS=draftCats;saveCats(CATS);cov('ov-types');renderDay();buildCOpts();
-}
-
-// flat list of all categories (including inside groups) for rendering/lookup
+// flat list of all categories (including inside groups)
 function flatCats(){
   var result=[];
   CATS.forEach(function(entry){
-    if(entry.group){(entry.items||[]).forEach(function(c){result.push(c);});}
+    if(entry.group)(entry.items||[]).forEach(function(c){result.push(c);});
     else result.push(entry);
   });
   return result;
 }
-// override gc to search flat
 function gc(id){return flatCats().find(function(c){return c.id===id;})||{label:id,color:'#c0b8b0'};}
 
 // ══════════════════════════════════════════════════
@@ -1183,7 +1162,7 @@ function renderWeek(){
     h.style.cursor='pointer';
     h.addEventListener('click',function(){
       if(gridTapDate===ds){gridTapDate=null;switchView('day');curDay=new Date(day);renderDay();}
-      else{gridTapDate=ds;renderWeek();}
+      else{gridTapDate=ds;updateSelBtn();renderWeek();}
     });
     grid.appendChild(h);
   });
@@ -1269,7 +1248,7 @@ function renderMonth(){
       h.textContent=dayNum;h.style.cursor='pointer';
       h.addEventListener('click',function(){
         if(gridTapDate===ds){gridTapDate=null;switchView('day');curDay=new Date(date);renderDay();}
-        else{gridTapDate=ds;renderMonth();}
+        else{gridTapDate=ds;updateSelBtn();renderMonth();}
       });
       grid.appendChild(h);
     })(day2);
@@ -1310,7 +1289,7 @@ function renderMonth(){
         }
         cell.addEventListener('click',function(){
           if(gridTapDate===ds){gridTapDate=null;switchView('day');curDay=new Date(date);renderDay();}
-          else{gridTapDate=ds;renderMonth();}
+          else{gridTapDate=ds;updateSelBtn();renderMonth();}
         });
         grid.appendChild(cell);
       })(d,i);
@@ -1357,7 +1336,7 @@ function renderYear(){
     h.style.cursor='pointer';
     h.addEventListener('click',function(){
       if(gridTapDate===ds){gridTapDate=null;switchView('day');curDay=new Date(date);renderDay();}
-      else{gridTapDate=ds;renderYear();}
+      else{gridTapDate=ds;updateSelBtn();renderYear();}
     });
     grid.appendChild(h);
   });
@@ -1395,7 +1374,7 @@ function renderYear(){
         }
         cell.addEventListener('click',function(){
           if(gridTapDate===ds){gridTapDate=null;switchView('day');curDay=new Date(date);renderDay();}
-          else{gridTapDate=ds;renderYear();}
+          else{gridTapDate=ds;updateSelBtn();renderYear();}
         });
         grid.appendChild(cell);
       });
@@ -1434,8 +1413,17 @@ function moveTip(e){
 function cov(id){document.getElementById(id).classList.remove('open');}
 document.querySelectorAll('.ov').forEach(ov=>ov.addEventListener('click',e=>{if(e.target===ov)cov(ov.id);}));
 
+function clearGridSel(){gridTapDate=null;updateSelBtn();renderCurrentView();}
+function updateSelBtn(){
+  var has=!!gridTapDate;
+  ['clr-w','clr-m','clr-y'].forEach(function(id){
+    var el=document.getElementById(id);
+    if(el)el.style.display=has?'block':'none';
+  });
+}
+
 function switchView(v){
-  curView=v;gridTapDate=null;
+  curView=v;gridTapDate=null;updateSelBtn();
   document.getElementById('vd').style.display=v==='day'?'flex':'none';
   document.getElementById('vw').style.display=v==='week'?'flex':'none';
   document.getElementById('vm').style.display=v==='month'?'flex':'none';
